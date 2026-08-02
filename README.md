@@ -1,80 +1,68 @@
-# Lakshya Pandey · Full-Stack Engineer | React · TypeScript · AI Integrations · Vite
+# AI Money Mentor
 
-> I build **intelligent, user-facing financial tools** — turning raw user inputs into actionable money insights through fast, modern web interfaces.  
-> Specialization: **AI-powered decision support apps**, personal finance UX, and scalable React/TypeScript frontends with Vite.  
-> From problem framing to deployed product — I own the full cycle.
+A personal finance assistant for Indian users — combines a real, tested tax-regime calculator with an LLM-powered chat interface for investment and SIP (mutual fund) guidance.
 
----
+**Live focus:** Old vs New income tax regime comparison, SIP wealth projection, and conversational financial Q&A.
 
-## 🟢 Current Status
+## What's actually deterministic vs. AI-generated
 
-🚀 **Building [AI Money Mentor](https://github.com/YOUR_GITHUB_USERNAME/AI-Money-Mentor)** — an intelligent financial assistant that gives personalized investment guidance and planning insights through a modern React + TypeScript interface  
-📬 **Open to SWE / Full-Stack internships & new grad roles**
+This project is explicit about where hard numbers come from, because financial tools that let an LLM freehand tax math are a real risk:
 
----
-
-## 🛠 Skills
-
-| Layer | Technologies |
+| Feature | How it works |
 |---|---|
-| **Frontend** | ![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white) |
-| **Styling** | ![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=flat-square&logo=css3&logoColor=white) |
-| **AI / Data** | ![OpenAI](https://img.shields.io/badge/OpenAI_API-412991?style=flat-square&logo=openai&logoColor=white) ![REST API](https://img.shields.io/badge/REST_API-FF6C37?style=flat-square&logo=postman&logoColor=white) |
-| **DevOps & Tools** | ![Vercel](https://img.shields.io/badge/Vercel-000?style=flat-square&logo=vercel) ![Git](https://img.shields.io/badge/Git-F05032?style=flat-square&logo=git&logoColor=white) ![VS Code](https://img.shields.io/badge/VS_Code-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white) |
+| Old vs New tax regime comparison | **Computed in code** ([`server/taxCalculator.ts`](server/taxCalculator.ts)) using the actual FY 2025-26/2026-27 slab rates, standard deduction, and Section 87A rebate rules. Fully unit tested — [`server/taxCalculator.test.ts`](server/taxCalculator.test.ts), 8 tests covering both regimes and edge cases. |
+| SIP wealth/compounding calculator | **Computed in code**, standard SIP future-value formula, real-time as you adjust the sliders. |
+| Chat responses about tax | The backend detects tax-related questions, runs the real calculator first, and passes the *computed numbers* into the LLM prompt — the model explains the numbers, it does not calculate them. |
+| General investment/planning conversation | LLM-generated (Gemini), conversational — treat as a starting point for discussion, not financial advice. |
 
----
+## Features
 
-## 🏗 Featured Project
+- **Tax Regime Comparator** — enter your income, get an exact Old vs New regime breakdown with bracket-by-bracket detail, rebate application, and cess, backed by `POST /api/tax/compare`.
+- **SIP Explorer** — browse government/private mutual funds, filter by risk and category, compare up to 3 side by side, and run a compounding wealth calculator.
+- **AI Chat Advisor** — ask free-form questions about taxes, investments, or retirement planning; tax-related questions are grounded in the real calculator output before the model responds.
+- **Export to PDF** — download your chat/plan as a shareable PDF.
 
-### 💰 AI Money Mentor — Intelligent Financial Assistant
+## Tech Stack
 
-> A smart financial guidance app that takes user goals and financial inputs, processes them through AI logic, and returns personalized investment insights and planning recommendations — all in a fast, modern UI.
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, Framer Motion
+- **Backend:** Express, TypeScript (via `tsx`)
+- **AI:** Google Gemini (`gemini-3-flash-preview`)
+- **Testing:** Vitest
 
-**What it does:**
-- Takes user financial goals and data as inputs
-- Runs AI/logic layer to generate personalized money recommendations
-- Surfaces investment insights and planning suggestions in real time
-- Clean, responsive interface built for speed with Vite
-- Structured codebase in TypeScript for reliability and maintainability
-
-**Stack:** `React` · `TypeScript` · `Vite` · `OpenAI API` · `REST APIs` · `Vercel`
-
-📂 [View Repository →](https://github.com/pandeylakshya207-max/AI-Money-Mentor) &nbsp;|&nbsp; 🌐 [Live Demo →](https://ai-money-mentor.vercel.app)
-
----
-
-## ⚙️ Run Locally
+## Getting Started
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/AI-Money-Mentor.git
-cd AI-Money-Mentor
 npm install
-npm run dev
+cp .env.example .env   # add your VITE_GEMINI_API_KEY
+npm run dev             # runs client (Vite) + server (Express) together
 ```
 
----
+Run the test suite:
+```bash
+npm test
+```
 
-## 📊 GitHub Stats
+## API
 
-<a href="https://git.io/streak-stats"><img src="https://streak-stats.demolab.com?user=pandeylakshya207-max&theme=tokyonight" alt="GitHub Streak" /></a>
----
+- `GET /api/sips` — list available SIP funds
+- `GET /api/sips/:id` — get a single fund
+- `POST /api/chat` — send a message; tax-related queries are automatically routed through the real tax calculator first
+- `POST /api/tax/compare` — directly compare Old vs New regime tax for a given income
 
-## 🔭 What's Coming Next
+```bash
+curl -X POST http://localhost:3001/api/tax/compare \
+  -H "Content-Type: application/json" \
+  -d '{"annualIncome": 1200000}'
+```
 
-- Real-time financial market API integration
-- AI chatbot for conversational financial queries
-- Portfolio tracking dashboard
-- Mobile app version (React Native)
+## Known Limitations
 
----
+Being upfront about what this doesn't do yet:
+- **Auth is currently `localStorage`-only** — there's no real backend account system yet, so nothing persists across devices or browser data clears. A real database-backed auth layer is planned next.
+- **Chat history isn't saved server-side** — it resets on page refresh.
+- The tax calculator covers salaried individuals under 60, slab tax + cess only — it does not account for surcharge on incomes above ₹50L or capital gains taxation.
+- This is a portfolio/learning project, not a substitute for a certified tax advisor or financial planner.
 
-## 📬 Contact
+## License
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=flat-square&logo=linkedin&logoColor=white)](https://linkedin.com/in/YOUR_LINKEDIN) &nbsp;
-[![Email](https://img.shields.io/badge/Email-EA4335?style=flat-square&logo=gmail&logoColor=white)](mailto:pandeylakshya207@gmail.com) &nbsp;
-
-
----
-
-<sub>⚡ Always building · Open to opportunities · Let's ship something great together</sub>
-pandeylakshya207-max/AI-Money-Mentor
+MIT — see [LICENSE](LICENSE).
