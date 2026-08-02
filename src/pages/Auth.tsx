@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, User, Phone, IdCard, Wallet, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, User, Phone, Wallet, Lock, Mail, ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -14,64 +14,98 @@ const Auth = ({ mode }: AuthProps) => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: '',
+    email: '',
+    password: '',
     phone: '',
-    aadhar: '',
     income: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (mode === 'demo') {
-      // Pre-fill demo data
       setFormData({
-        fullName: 'Aditya Kumar',
+        fullName: 'Demo User',
+        email: 'demo@example.com',
+        password: 'demopassword123',
         phone: '9876543210',
-        aadhar: '123456789012',
-        income: '12,00,000',
+        income: '1200000',
       });
     } else {
-      setFormData({
-        fullName: '',
-        phone: '',
-        aadhar: '',
-        income: '',
-      });
+      setFormData({ fullName: '', email: '', password: '', phone: '', income: '' });
       setErrors({});
     }
+    setApiError('');
   }, [mode]);
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
-    if (!formData.fullName && mode !== 'login') newErrors.fullName = 'Name is required';
-    
-    if (!/^\d{10}$/.test(formData.phone)) {
-      newErrors.phone = 'Enter a valid 10-digit phone number';
+
+    if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
+      newErrors.email = 'Enter a valid email address';
     }
-    
-    if (mode === 'signup' && !/^\d{12}$/.test(formData.aadhar)) {
-      newErrors.aadhar = 'Enter a valid 12-digit Aadhar number';
+
+    if (formData.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
     }
-    
-    if (mode === 'signup' && !formData.income) {
-      newErrors.income = 'Annual income is required';
+
+    if (mode === 'signup' || mode === 'demo') {
+      if (!formData.fullName) newErrors.fullName = 'Name is required';
+      if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
+        newErrors.phone = 'Enter a valid 10-digit phone number';
+      }
+      if (!formData.income) newErrors.income = 'Annual income is required';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (validate() || mode === 'demo') {
-      // Save user to local storage for demo purposes
-      localStorage.setItem('user', JSON.stringify(formData));
+    setApiError('');
+    if (!validate()) return;
+
+    setLoading(true);
+    try {
+      const isSignup = mode === 'signup' || mode === 'demo';
+      const endpoint = isSignup ? '/api/signup' : '/api/login';
+      const body = isSignup
+        ? {
+            fullName: formData.fullName,
+            email: formData.email,
+            password: formData.password,
+            phone: formData.phone || undefined,
+            income: formData.income ? Number(formData.income) : undefined,
+          }
+        : { email: formData.email, password: formData.password };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setApiError(data.error || 'Something went wrong. Please try again.');
+        return;
+      }
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       navigate('/chat');
+    } catch {
+      setApiError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background patterns */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-600/5 rounded-full blur-3xl -mr-48 -mt-48" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl -ml-48 -mb-48" />
 
@@ -98,13 +132,19 @@ const Auth = ({ mode }: AuthProps) => {
               {mode === 'signup' ? 'Create your account' : mode === 'demo' ? 'Explore Demo' : 'Welcome back'}
             </h1>
             <p className="text-slate-500">
-              {mode === 'signup' 
-                ? 'Join 10k+ users securing their financial future'
+              {mode === 'signup'
+                ? 'Set up your account to get personalized guidance'
                 : mode === 'demo'
-                ? 'Experience the power of AI Money Mentor'
+                ? 'Create a real demo account to try AI Money Mentor'
                 : 'Enter your credentials to continue'}
             </p>
           </div>
+
+          {apiError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 rounded-xl text-sm">
+              {apiError}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {(mode === 'signup' || mode === 'demo') && (
@@ -119,27 +159,37 @@ const Auth = ({ mode }: AuthProps) => {
             )}
 
             <Input
-              label="Phone Number"
-              placeholder="+91 XXXXX XXXXX"
-              icon={<Phone className="w-5 h-5" />}
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              error={errors.phone}
+              label="Email"
+              placeholder="you@example.com"
+              icon={<Mail className="w-5 h-5" />}
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              error={errors.email}
+            />
+
+            <Input
+              label="Password"
+              type="password"
+              placeholder="At least 8 characters"
+              icon={<Lock className="w-5 h-5" />}
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              error={errors.password}
             />
 
             {(mode === 'signup' || mode === 'demo') && (
               <>
                 <Input
-                  label="Aadhar Number"
-                  placeholder="12-digit number"
-                  icon={<IdCard className="w-5 h-5" />}
-                  value={formData.aadhar}
-                  onChange={(e) => setFormData({ ...formData, aadhar: e.target.value })}
-                  error={errors.aadhar}
+                  label="Phone Number (optional)"
+                  placeholder="10-digit number"
+                  icon={<Phone className="w-5 h-5" />}
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  error={errors.phone}
                 />
                 <Input
                   label="Approx. Annual Income"
-                  placeholder="₹ 0.00"
+                  placeholder="0"
                   icon={<Wallet className="w-5 h-5" />}
                   value={formData.income}
                   onChange={(e) => setFormData({ ...formData, income: e.target.value })}
@@ -148,8 +198,8 @@ const Auth = ({ mode }: AuthProps) => {
               </>
             )}
 
-            <Button className="w-full h-14 text-lg mt-4 font-bold">
-              {mode === 'signup' ? 'Sign Up' : mode === 'demo' ? 'Start Demo Now' : 'Login'}
+            <Button className="w-full h-14 text-lg mt-4 font-bold" disabled={loading}>
+              {loading ? 'Please wait...' : mode === 'signup' ? 'Sign Up' : mode === 'demo' ? 'Create Demo Account' : 'Login'}
             </Button>
           </form>
 
@@ -171,17 +221,6 @@ const Auth = ({ mode }: AuthProps) => {
             ) : null}
           </div>
         </Card>
-
-        {mode === 'demo' && (
-          <div className="mt-6 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex gap-3 items-start">
-            <div className="p-1 bg-emerald-600 rounded-lg shrink-0 mt-0.5">
-              <ShieldCheck className="w-4 h-4 text-white" />
-            </div>
-            <p className="text-sm text-emerald-800 leading-relaxed">
-              <strong>Demo Mode:</strong> We've pre-filled the profile for Aditya Kumar (Income: ₹12 LPA) to show you how AI Money Mentor personalizes your wealth journey.
-            </p>
-          </div>
-        )}
       </motion.div>
     </div>
   );
