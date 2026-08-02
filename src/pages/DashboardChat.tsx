@@ -1,16 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Send, 
-  Bot, 
-  User, 
-  Download, 
-  LayoutDashboard, 
-  TrendingUp, 
+import {
+  Send,
+  Bot,
+  User,
+  Download,
+  LayoutDashboard,
+  TrendingUp,
   LogOut,
   ChevronRight,
-  TrendingDown,
   Calculator
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -18,7 +17,6 @@ import remarkGfm from 'remark-gfm';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
 import { cn } from '../components/ui/Button';
 
 interface Message {
@@ -28,33 +26,81 @@ interface Message {
   timestamp: Date;
 }
 
+interface StoredUser {
+  id: number;
+  fullName: string;
+  email: string;
+  income?: number;
+}
+
 const DashboardChat = () => {
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [user, setUser] = useState<StoredUser | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
+    if (!token || !storedUser) {
       navigate('/login');
       return;
     }
-    const userData = JSON.parse(storedUser);
+    const userData: StoredUser = JSON.parse(storedUser);
     setUser(userData);
 
-    // Initial Greeting
-    setMessages([
-      {
-        id: '1',
-        text: `Hello ${userData.fullName}! I'm your AI Money Mentor. Based on your income of ₹${userData.income}, I've analyzed potential investment and tax-saving opportunities for you. How can I help you today?`,
-        sender: 'ai',
-        timestamp: new Date(),
-      },
-    ]);
+    const loadHistory = async () => {
+      try {
+        const response = await fetch('/api/messages', {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+
+        if (response.status === 401) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          navigate('/login');
+          return;
+        }
+
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setMessages(
+            data.map((m: { id: number; text: string; sender: 'user' | 'ai'; createdAt: string }) => ({
+              id: String(m.id),
+              text: m.text,
+              sender: m.sender,
+              timestamp: new Date(m.createdAt),
+            }))
+          );
+        } else {
+          setMessages([
+            {
+              id: '1',
+              text: 'Hello ' + userData.fullName + '! I am your AI Money Mentor. Based on your income of Rs.' + userData.income + ', I have analyzed potential investment and tax-saving opportunities for you. How can I help you today?',
+              sender: 'ai',
+              timestamp: new Date(),
+            },
+          ]);
+        }
+      } catch {
+        setMessages([
+          {
+            id: '1',
+            text: 'Hello ' + userData.fullName + '! How can I help you today?',
+            sender: 'ai',
+            timestamp: new Date(),
+          },
+        ]);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    loadHistory();
   }, [navigate]);
 
   useEffect(() => {
@@ -63,6 +109,12 @@ const DashboardChat = () => {
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -78,9 +130,19 @@ const DashboardChat = () => {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, userProfile: user }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+        },
+        body: JSON.stringify({ message: input }),
       });
+
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        navigate('/login');
+        return;
+      }
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -95,11 +157,11 @@ const DashboardChat = () => {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
-    } catch (error: any) {
-      console.error('Chat error:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'I encountered an issue. Please check if the backend is running.';
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: `Error: ${error.message || 'I encountered an issue. Please check if the backend is running and the API key is set.'}`,
+        text: 'Error: ' + message,
         sender: 'ai',
         timestamp: new Date(),
       };
@@ -110,7 +172,7 @@ const DashboardChat = () => {
   };
 
   const handleExport = async () => {
-    if (!chatContainerRef.current) return;
+    if (!chatContainerRef.current || !user) return;
     const canvas = await html2canvas(chatContainerRef.current);
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF('p', 'mm', 'a4');
@@ -118,7 +180,13 @@ const DashboardChat = () => {
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`MoneyMentor_Plan_${user.fullName}.pdf`);
+    pdf.save('MoneyMentor_Plan_' + user.fullName + '.pdf');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/');
   };
 
   const SuggestionChip = ({ text }: { text: string }) => (
@@ -132,40 +200,40 @@ const DashboardChat = () => {
 
   const MessageBubble = ({ message }: { message: Message }) => {
     const isSpecial = message.text.includes('[INVESTMENT_PLAN]') || message.text.includes('[TAX_ADVICE]');
-    
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         className={cn(
-          "flex w-full mb-6",
-          message.sender === 'user' ? "justify-end" : "justify-start"
+          'flex w-full mb-6',
+          message.sender === 'user' ? 'justify-end' : 'justify-start'
         )}
       >
         <div className={cn(
-          "flex max-w-[85%] md:max-w-[70%] gap-3",
-          message.sender === 'user' && "flex-row-reverse"
+          'flex max-w-[85%] md:max-w-[70%] gap-3',
+          message.sender === 'user' && 'flex-row-reverse'
         )}>
           <div className={cn(
-            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm",
-            message.sender === 'user' ? "bg-slate-900 text-white" : "bg-emerald-600 text-white"
+            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm',
+            message.sender === 'user' ? 'bg-slate-900 text-white' : 'bg-emerald-600 text-white'
           )}>
             {message.sender === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
           </div>
-          
+
           <div className={cn(
-            "space-y-2",
-            message.sender === 'user' ? "items-end text-right" : "items-start"
+            'space-y-2',
+            message.sender === 'user' ? 'items-end text-right' : 'items-start'
           )}>
             <div className={cn(
-              "px-5 py-3 rounded-2xl shadow-sm leading-relaxed",
-              message.sender === 'user' 
-                ? "bg-slate-900 text-white" 
+              'px-5 py-3 rounded-2xl shadow-sm leading-relaxed',
+              message.sender === 'user'
+                ? 'bg-slate-900 text-white'
                 : message.text.startsWith('Error:')
-                ? "bg-red-50 border border-red-100 text-red-700"
-                : isSpecial 
-                ? "bg-white border-2 border-emerald-100 ring-4 ring-emerald-50/50" 
-                : "bg-white border border-slate-100"
+                ? 'bg-red-50 border border-red-100 text-red-700'
+                : isSpecial
+                ? 'bg-white border-2 border-emerald-100 ring-4 ring-emerald-50/50'
+                : 'bg-white border border-slate-100'
             )}>
               {isSpecial && (
                 <div className="flex items-center gap-2 mb-3 pb-2 border-b border-emerald-50 text-emerald-600 font-bold uppercase text-xs tracking-wider">
@@ -188,9 +256,20 @@ const DashboardChat = () => {
     );
   };
 
+  if (historyLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="flex gap-1.5">
+          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" />
+          <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce delay-100" />
+          <div className="w-2 h-2 bg-emerald-600 rounded-full animate-bounce delay-200" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
-      {/* Sidebar */}
       <div className="w-72 bg-white border-r border-slate-200 flex flex-col hidden lg:flex">
         <div className="p-6 border-b border-slate-100">
           <div className="flex items-center gap-3 mb-8">
@@ -199,8 +278,8 @@ const DashboardChat = () => {
             </div>
             <span className="text-lg font-bold text-slate-900">MoneyMentor</span>
           </div>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="w-full justify-start gap-3 h-12"
             onClick={() => navigate('/sips')}
           >
@@ -223,20 +302,18 @@ const DashboardChat = () => {
               <User className="text-slate-600 w-5 h-5" />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-slate-900">{user?.fullName || 'Aditya Kumar'}</span>
-              <span className="text-[10px] text-slate-500">Premium User</span>
+              <span className="text-sm font-bold text-slate-900">{user?.fullName || 'User'}</span>
+              <span className="text-[10px] text-slate-500">{user?.email}</span>
             </div>
           </div>
-          <Button variant="ghost" className="w-full justify-start gap-3 h-10 text-slate-500 hover:text-red-500 hover:bg-red-50" onClick={() => navigate('/')}>
+          <Button variant="ghost" className="w-full justify-start gap-3 h-10 text-slate-500 hover:text-red-500 hover:bg-red-50" onClick={handleLogout}>
             <LogOut className="w-5 h-5" />
             Sign Out
           </Button>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Header */}
         <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-slate-900">Financial Advisor</h2>
@@ -255,8 +332,7 @@ const DashboardChat = () => {
           </div>
         </header>
 
-        {/* Chat Area */}
-        <div 
+        <div
           ref={chatContainerRef}
           className="flex-1 overflow-y-auto p-6 scrollbar-hide bg-[#fbfcfd]"
         >
@@ -288,7 +364,6 @@ const DashboardChat = () => {
           </div>
         </div>
 
-        {/* Action Bar (Suggestions) */}
         {!isLoading && messages.length === 1 && (
           <div className="p-4 flex gap-3 overflow-x-auto scrollbar-hide max-w-4xl mx-auto w-full no-scrollbar">
             <SuggestionChip text="Old vs New tax?" />
@@ -298,7 +373,6 @@ const DashboardChat = () => {
           </div>
         )}
 
-        {/* Input Area */}
         <div className="p-6 bg-white border-t border-slate-200">
           <div className="max-w-4xl mx-auto relative group">
             <input
