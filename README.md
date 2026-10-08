@@ -1,5 +1,7 @@
 ﻿# AI Money Mentor
 
+[![ci](https://github.com/pandeylakshya207-max/ai-money-mentor/actions/workflows/ci.yml/badge.svg)](https://github.com/pandeylakshya207-max/ai-money-mentor/actions/workflows/ci.yml)
+
 A personal finance assistant for Indian users — combines a real, tested tax-regime calculator with an LLM-powered chat interface for investment and SIP (mutual fund) guidance.
 
 **Live focus:** Old vs New income tax regime comparison, SIP wealth projection, and conversational financial Q&A.
